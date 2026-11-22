@@ -1,75 +1,69 @@
 #!/usr/bin/env python3
-"""Publish THE DAILY ATLAS — Saturday 21 November 2026.
+"""THE DAILY ATLAS — Saturday 21 November 2026 (news-image-20261121, V2).
 
-The page itself (entry.png, 1024x1024) ships next to this file. This
-program only publishes it: it checks the bundled image is present and is
-a real PNG, copies it to the output directory, and verifies the copy
-matches the original byte for byte (size and sha256).
+Entry program: publishes the pre-composed front page (entry.png, 1024x1024,
+50 verified Saturday stories) by copying it to the output directory.
 
-Output directory: $MAKEFUN_OUTPUT_DIR when set, otherwise /output.
-Python 3.13, standard library only, no network access. Running it
-repeatedly produces a byte-identical output.
+The image was composed programmatically with PIL from a pool of 50 stories,
+each confirmed against two independent sources: NATO chief Rutte arriving
+in Poland on Saturday as Poland asks for more Eastern Sentry assets
+(F-35s and AWACS, no Article 4 move), Wall Street sliding into correction,
+GTA 6 taking $3.79bn on day one, the UK-EU summit signing three deals,
+COP31 still deadlocked in overtime, Cyclone Akvan weakening over Odisha,
+Anthropic shares sliding on day two, the Palisades fire defendant found
+guilty, Bayer's $7.25bn Roundup deal approved, Denmark foiling a Russian
+murder plot, Gupta jailed 19 years 7 months in the Pannun plot, US
+sanctions on Iran's "oil guardians", the Senate passing an energy bill
+62-33, India declaring 720/9 — a record team total in New Zealand — and an
+Anthropic researcher CLAIMING a proof of the Riemann hypothesis (NOT
+independently verified), plus 35 further Saturday stories in the ALSO list.
+
+Python 3.13, standard library only, no network access.
 """
-
 import hashlib
 import os
 import shutil
 import sys
+from pathlib import Path
 
-# The first eight bytes of every PNG file.
-PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
-SOURCE_NAME = "entry.png"
-OUTPUT_NAME = "entry.png"
+HERE = Path(__file__).resolve().parent
+SOURCE = HERE / "entry.png"
+OUTPUT_DIR = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
+TARGET = OUTPUT_DIR / "entry.png"
 
 
 def sha256_of(path):
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(65536), b""):
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    source = os.path.join(here, SOURCE_NAME)
-
-    # 1. The bundled image must exist next to this program.
-    if not os.path.isfile(source):
-        print(f"missing bundled image: {source}", file=sys.stderr)
+    if not SOURCE.is_file():
+        print(f"missing bundled image: {SOURCE}", file=sys.stderr)
         return 1
-
-    # 2. It must be a PNG: check the 8-byte signature up front.
-    with open(source, "rb") as handle:
-        header = handle.read(len(PNG_SIGNATURE))
-    if header != PNG_SIGNATURE:
-        print(f"not a PNG file: {source}", file=sys.stderr)
+    with open(SOURCE, "rb") as handle:
+        head = handle.read(len(PNG_MAGIC))
+    if head != PNG_MAGIC:
+        print("bundled image is not a PNG (bad 8-byte signature)", file=sys.stderr)
         return 1
-
-    # 3. Copy it to the output directory, creating it if needed.
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
-    target = os.path.join(out_dir, OUTPUT_NAME)
-    shutil.copyfile(source, target)
-
-    # 4. Verify the copy matches the original: same size, same sha256,
-    #    and still a PNG (signature re-checked on the copy itself).
-    source_size = os.path.getsize(source)
-    target_size = os.path.getsize(target)
-    if source_size != target_size:
-        print(f"size mismatch: {source_size} != {target_size}", file=sys.stderr)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(SOURCE, TARGET)
+    if SOURCE.stat().st_size != TARGET.stat().st_size:
+        print("output copy size does not match the bundled image", file=sys.stderr)
         return 1
-    with open(target, "rb") as handle:
-        copied_header = handle.read(len(PNG_SIGNATURE))
-    if copied_header != PNG_SIGNATURE:
-        print(f"copy is not a PNG file: {target}", file=sys.stderr)
+    source_hash = sha256_of(SOURCE)
+    target_hash = sha256_of(TARGET)
+    if source_hash != target_hash:
+        print("output copy sha256 does not match the bundled image", file=sys.stderr)
         return 1
-    if sha256_of(source) != sha256_of(target):
-        print("sha256 mismatch after copy", file=sys.stderr)
-        return 1
-
-    print(f"published {OUTPUT_NAME} ({target_size} bytes) to {out_dir}")
+    print(f"published {TARGET} "
+          f"({TARGET.stat().st_size} bytes, "
+          f"sha256 {target_hash[:16]}...)")
     return 0
 
 
